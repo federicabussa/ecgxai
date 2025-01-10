@@ -17,7 +17,7 @@ setup(name='ecgxai',
       install_requires=[
           "pytorch_lightning==1.5.10",
           "torchmetrics==0.9.1",
-          "torch==1.9.*",
+          "torch==2.5.1",
           "numpy",
           "scipy",
           "pandas",
