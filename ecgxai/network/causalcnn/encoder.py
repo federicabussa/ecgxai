@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .modules import CausalCNN, Softplus, SqueezeChannels
+from .modules import CausalCNN, Softplus, Spatial, SqueezeChannels
 
 
 class CausalCNNEncoder(torch.nn.Module):
