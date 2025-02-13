@@ -7,7 +7,7 @@ class CausalCNNVDecoder(torch.nn.Module):
     Variational decoder.
     """
     def __init__(self, k, width, in_channels, channels, depth, out_channels,
-                 kernel_size, gaussian_out, softplus_eps, dropout):
+                 kernel_size, gaussian_out, softplus_eps, dropout, verbose):
         super(CausalCNNVDecoder, self).__init__()
         self.in_channels = in_channels
         self.width = width
@@ -16,7 +16,7 @@ class CausalCNNVDecoder(torch.nn.Module):
         self.linear2 = torch.nn.Linear(in_channels, in_channels * width)
         self.causal_cnn = CausalCNN(
             in_channels, channels, depth, out_channels, kernel_size,
-            forward=False,
+            forward=False, verbose=verbose
         )
         if self.gaussian_out:
             self.linear_mean = nn.Linear(out_channels * width, 
@@ -25,6 +25,7 @@ class CausalCNNVDecoder(torch.nn.Module):
                 torch.nn.Linear(out_channels * width, out_channels * width),
                 Softplus(softplus_eps),
             )
+        self.verbose = verbose
         
     def forward(self, x):
         """
@@ -33,11 +34,17 @@ class CausalCNNVDecoder(torch.nn.Module):
         """
         B, _ = x.shape
         # from (BxK) to (BxC)
-        out = self.linear1(x)
+        out = self.linear1(x) # torch.Size([128, 64])
+        if self.verbose:
+            print(out.shape, 'FROM DECODER (Linear_1)') 
         # from (BxC) to (Bx(C*600))
-        out = self.linear2(out)
+        out = self.linear2(out) # torch.Size([128, 19200])
+        if self.verbose:
+            print(out.shape, 'FROM DECODER (Linear_2)') 
         # from (Bx(C*600)) to (BxCx600)
-        out = out.view(B, self.in_channels, self.width)
+        out = out.view(B, self.in_channels, self.width) # torch.Size([128, 64, 300])
+        if self.verbose:
+            print(out.shape, 'FROM DECODER (Reshape)')
         # deconvolve through the causal CNN
         out = self.causal_cnn(out)
         if self.gaussian_out:
