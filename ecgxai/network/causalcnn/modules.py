@@ -57,6 +57,12 @@ class CausalConvolutionBlock(torch.nn.Module):
     Takes as input a three-dimensional tensor (`B`, `C`, `L`) where `B` is the
     batch size, `C` is the number of input channels, and `L` is the length of
     the input. Outputs a three-dimensional tensor (`B`, `C`, `L`).
+    
+    Output size of Conv1d:
+    L_out = (L_in + 2 * padding - dilation * (kernel_size - 1) - 1) / stride + 1
+
+    Output size of ConvTransposed1d:
+    L_out = (L_in - 1) * stride - 2 * padding + dilation * (kernel_size - 1) + output_padding + 1
 
     Attributes:
         in_channels (int): Number of input channels.
@@ -64,18 +70,22 @@ class CausalConvolutionBlock(torch.nn.Module):
         kernel_size (int): Kernel size of the applied non-residual convolutions.
         padding (int): Zero-padding applied to the left of the input of the
            non-residual convolutions.
+        dilation (int): Spacing between kernel elements.
         final (bool): Disables, if True, the last activation function.
         forward (bool): If True ordinary convolutions are used, and otherwise 
-            transposed convolutions will be used.
+            transposed convolutions will be used. Defaults to True.
+        verbose (bool): verbosity. Defaults to False.
     """
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int,
-                 dilation: int, final=False, forward=True):
+                 dilation: int, final=False, forward=True, verbose=False):
         super(CausalConvolutionBlock, self).__init__()
+        self.is_forward = forward
+        self.verbose = verbose
 
         Conv1d = torch.nn.Conv1d if forward else torch.nn.ConvTranspose1d
         
         # Computes left padding so that the applied convolutions are causal
-        padding = (kernel_size - 1) * dilation
+        padding = (kernel_size - 1) * dilation if self.is_forward else 2*dilation
 
         # First causal convolution
         conv1 = Conv1d(
@@ -97,7 +107,10 @@ class CausalConvolutionBlock(torch.nn.Module):
         # Causal network
         self.causal = torch.nn.Sequential(
             conv1, chomp1, relu1, conv2, chomp2, relu2
+        ) if self.is_forward else torch.nn.Sequential(
+            conv1, relu1, conv2, relu2
         )
+        self.causal_list = [conv1, chomp1, relu1, conv2, chomp2, relu2] if self.is_forward else [conv1, relu1, conv2, relu2]
 
         # Residual connection
         self.upordownsample = Conv1d(
@@ -108,8 +121,25 @@ class CausalConvolutionBlock(torch.nn.Module):
         self.relu = torch.nn.LeakyReLU() if final else None
 
     def forward(self, x):
+        if self.verbose:
+            # if not self.is_forward:
+            #     print(self.causal)
+            x_c = x.clone()
+            for layer in self.causal_list:
+                x_c = layer(x_c)
+                print(f"Output of layer {layer}: {x_c.shape}")
         out_causal = self.causal(x)
         res = x if self.upordownsample is None else self.upordownsample(x)
+        """
+        If decoder.depth == 0: torch.Size([128, 64, 300]) OUT_CAUSAL SHAPE
+        If decoder.depth == 1: torch.Size([128, 128, 268]) OUT_CAUSAL SHAPE
+        If decoder.depth == 2: torch.Size([128, 128, 236]) OUT_CAUSAL SHAPE
+        If decoder.depth == 3: torch.Size([128, 128, 172]) OUT_CAUSAL SHAPE
+        """
+        if self.verbose:
+            print(out_causal.shape, "OUT_CAUSAL SHAPE")
+            print(res.shape, "RES CAUSAL SHAPE")
+        
         if self.relu is None:
             return out_causal + res
         else:
@@ -132,7 +162,7 @@ class CausalCNN(torch.nn.Module):
         kernel_size (int): Kernel size of the applied non-residual convolutions.
     """
     def __init__(self, in_channels, channels, depth, out_channels,
-                 kernel_size, forward=True):
+                 kernel_size, forward=True, verbose=False):
         super(CausalCNN, self).__init__()
 
         layers = []  # List of causal convolution blocks
@@ -144,7 +174,7 @@ class CausalCNN(torch.nn.Module):
             in_channels_block = in_channels if i == 0 else channels
             layers += [CausalConvolutionBlock(
                 in_channels_block, channels, kernel_size, dilation_size,
-                forward=forward,
+                forward=forward, verbose=verbose
             )]
             # double the dilation at each step if forward, otherwise
             # halve the dilation

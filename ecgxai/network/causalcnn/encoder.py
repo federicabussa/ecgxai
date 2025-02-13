@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .modules import CausalCNN, Softplus, SqueezeChannels
+from .modules import CausalCNN, Softplus, Spatial, SqueezeChannels
 
 
 class CausalCNNEncoder(torch.nn.Module):
@@ -64,7 +64,7 @@ class CausalCNNVEncoder(torch.nn.Module):
     """
     def __init__(self, in_channels: int, channels: int, depth: int, reduced_size: int,
                  out_channels: int, kernel_size: int, softplus_eps: float, dropout: float, 
-                 sd_output: bool = True):
+                 sd_output: bool = True, verbose = False):
         super(CausalCNNVEncoder, self).__init__()
         causal_cnn = CausalCNN(
             in_channels, channels, depth, reduced_size, kernel_size
@@ -81,9 +81,17 @@ class CausalCNNVEncoder(torch.nn.Module):
                 torch.nn.Linear(reduced_size, out_channels),
                 Softplus(softplus_eps),
             )
+        self.verbose = verbose
 
     def forward(self, x):
         out = self.network(x)
+        if self.verbose:
+            print(out.shape, "FROM ENC (CausalCNN, ReduceSize, Squeeze)")
         if self.sd_output:
-            return self.linear_mean(out), self.linear_sd(out)
+            mean = self.linear_mean(out)
+            sd = self.linear_sd(out)
+            if self.verbose:
+                print(mean.shape, "MEAN VEC")
+                print(sd.shape, "SD (LOG_VAR) VEC")
+            return mean, sd
         return self.linear_mean(out).squeeze()

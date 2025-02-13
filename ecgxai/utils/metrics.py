@@ -2,9 +2,11 @@ import torch
 from torchmetrics import Metric
 from typing import Union, List
 import ecgxai.utils.exceptions as exceptions
+# from torchmetrics.utilities import check_forward_no_full_state
 
 
 class BaseMetric(Metric):
+    full_state_update = False
     @property
     def batch_args(self):
         return []
